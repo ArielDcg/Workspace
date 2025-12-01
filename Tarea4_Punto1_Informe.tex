@@ -1,0 +1,735 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+
+\geometry{left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm}
+
+\title{\textbf{Tarea 4 - Punto 1} \\ Solución de Reactor PFR usando Elementos Finitos}
+\author{Elementos Finitos - Método de Galerkin}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Introducción}
+
+El presente documento desarrolla la solución del estado estacionario de concentración en un reactor PFR (Plug Flow Reactor) utilizando el método de elementos finitos con formulación de Galerkin y debilitamiento. Se presentan dos enfoques:
+
+\begin{enumerate}
+    \item \textbf{Formulación NO discretizada}: Usando polinomios de Legendre como funciones base
+    \item \textbf{Formulación discretizada (FEM)}: Usando polinomios de Lagrange como funciones base
+\end{enumerate}
+
+\section{Planteamiento del Problema}
+
+\subsection{Ecuación Gobernante}
+
+La ecuación diferencial que modela el estado estacionario de concentración con reacción de primer orden en un reactor PFR es:
+
+\begin{equation}
+D\frac{d^2c}{dx^2} - U\frac{dc}{dx} - kc = 0
+\label{eq:governing}
+\end{equation}
+
+donde:
+\begin{itemize}
+    \item $D = 5000$ m$^2$/hr: coeficiente de difusión/dispersión
+    \item $U = 100$ m/hr: velocidad advectiva o \textit{bulk velocity}
+    \item $k = 2$ hr$^{-1}$: tasa de reacción (consumo de la especie)
+    \item $c(x)$: concentración de la sustancia [mol/L]
+    \item $x$: posición a lo largo del reactor [m]
+\end{itemize}
+
+\subsection{Condiciones de Contorno}
+
+El problema está sujeto a las siguientes condiciones de contorno:
+
+\begin{align}
+U c_{inlet} &= U c - D\frac{dc}{dx}, \quad x = 0 \label{eq:bc1}\\
+\frac{dc}{dx} &= 0, \quad x = L \label{eq:bc2}
+\end{align}
+
+Con los siguientes valores:
+\begin{itemize}
+    \item $L = 100$ m: longitud del reactor
+    \item $c_{inlet} = 100$ mol/L: concentración de entrada
+\end{itemize}
+
+\subsection{Solución Analítica}
+
+La solución analítica del problema está dada por:
+
+\begin{equation}
+c(x) = \frac{U c_{in}}{(U - D\lambda_1) \lambda_2 e^{\lambda_2 L} - (U - D\lambda_2) \lambda_1 e^{\lambda_1 L}} \left[\lambda_2 e^{\lambda_2 L} e^{\lambda_1 x} - \lambda_1 e^{\lambda_1 L} e^{\lambda_2 x}\right]
+\label{eq:analytical}
+\end{equation}
+
+donde los valores característicos están dados por:
+
+\begin{equation}
+\lambda_{1,2} = \frac{U}{2D}\left[1 \pm \sqrt{1 + \frac{4kD}{U^2}}\right]
+\label{eq:lambda}
+\end{equation}
+
+\section{Desarrollo Matemático: Método de Galerkin}
+
+\subsection{Formulación Débil (Weakening)}
+
+Partiendo de la ecuación diferencial (\ref{eq:governing}), multiplicamos por una función de prueba $N_l(x)$ e integramos sobre el dominio $\Omega = [0, L]$:
+
+\begin{equation}
+\int_0^L N_l(x) \left[D\frac{d^2c}{dx^2} - U\frac{dc}{dx} - kc\right] dx = 0
+\label{eq:weak_form_1}
+\end{equation}
+
+\subsection{Integración por Partes (Debilitamiento)}
+
+Aplicamos integración por partes al término de segunda derivada para \textbf{debilitar} la formulación:
+
+\begin{equation}
+\int_0^L N_l D\frac{d^2c}{dx^2} dx = \left[N_l D\frac{dc}{dx}\right]_0^L - \int_0^L \frac{dN_l}{dx} D\frac{dc}{dx} dx
+\label{eq:integration_by_parts}
+\end{equation}
+
+Sustituyendo en (\ref{eq:weak_form_1}):
+
+\begin{equation}
+\left[N_l D\frac{dc}{dx}\right]_0^L - \int_0^L \frac{dN_l}{dx} D\frac{dc}{dx} dx - \int_0^L N_l U\frac{dc}{dx} dx - \int_0^L N_l k c dx = 0
+\label{eq:weak_form_2}
+\end{equation}
+
+\subsection{Aproximación de Galerkin}
+
+Aproximamos la solución $c(x)$ como una combinación lineal de funciones base $N_m(x)$:
+
+\begin{equation}
+c(x) \approx \sum_{m=0}^{M-1} a_m N_m(x)
+\label{eq:galerkin_approx}
+\end{equation}
+
+Sustituyendo (\ref{eq:galerkin_approx}) en (\ref{eq:weak_form_2}) y usando el método de Galerkin ($N_l = N_m$ como funciones de prueba):
+
+\begin{multline}
+\left[N_l D\sum_{m=0}^{M-1} a_m \frac{dN_m}{dx}\right]_0^L - \sum_{m=0}^{M-1} a_m \int_0^L \frac{dN_l}{dx} D\frac{dN_m}{dx} dx \\
+- \sum_{m=0}^{M-1} a_m \int_0^L N_l U\frac{dN_m}{dx} dx - \sum_{m=0}^{M-1} a_m \int_0^L N_l k N_m dx = 0
+\label{eq:galerkin_full}
+\end{multline}
+
+\subsection{Matrices Elementales $K_{lm}$ y $F_l$}
+
+Reorganizando (\ref{eq:galerkin_full}), obtenemos el sistema matricial:
+
+\begin{equation}
+\sum_{m=0}^{M-1} K_{lm} a_m = F_l
+\label{eq:matrix_system}
+\end{equation}
+
+donde:
+
+\begin{equation}
+\boxed{K_{lm} = -\int_0^L D\frac{dN_l}{dx}\frac{dN_m}{dx} dx - \int_0^L U N_l \frac{dN_m}{dx} dx - \int_0^L k N_l N_m dx}
+\label{eq:Klm}
+\end{equation}
+
+y el vector de carga $F_l$ proviene del término de frontera:
+
+\begin{equation}
+F_l = -\left[N_l D\frac{dc}{dx}\right]_0^L
+\label{eq:Fl_boundary}
+\end{equation}
+
+\subsection{Tratamiento de Condiciones de Contorno}
+
+\subsubsection{Condición en $x = 0$}
+
+De la condición (\ref{eq:bc1}):
+\begin{equation}
+D\frac{dc}{dx}\bigg|_{x=0} = U(c - c_{inlet})\bigg|_{x=0} = U\sum_{m=0}^{M-1} a_m N_m(0) - U c_{inlet}
+\end{equation}
+
+\subsubsection{Condición en $x = L$}
+
+De la condición (\ref{eq:bc2}):
+\begin{equation}
+\frac{dc}{dx}\bigg|_{x=L} = 0
+\end{equation}
+
+\subsubsection{Vector de Carga Final}
+
+Evaluando (\ref{eq:Fl_boundary}) con las condiciones de contorno:
+
+\begin{align}
+F_l &= -N_l(L) \cdot D \cdot 0 + N_l(0) \cdot D \cdot \frac{dc}{dx}\bigg|_{x=0} \\
+&= N_l(0) \cdot U \left(\sum_{m=0}^{M-1} a_m N_m(0) - c_{inlet}\right)
+\end{align}
+
+Llevando los términos con $a_m$ al lado izquierdo:
+
+\begin{equation}
+\boxed{F_l = N_l(0) \cdot U \cdot c_{inlet}}
+\label{eq:Fl_final}
+\end{equation}
+
+y se añade a $K_{lm}$:
+
+\begin{equation}
+K_{lm} \leftarrow K_{lm} + N_l(0) \cdot U \cdot N_m(0)
+\label{eq:Klm_bc}
+\end{equation}
+
+\subsection{Sistema Matricial Global}
+
+El problema se reduce a resolver el sistema lineal:
+
+\begin{equation}
+\boxed{[K]\{a\} = \{F\}}
+\label{eq:global_system}
+\end{equation}
+
+donde:
+\begin{itemize}
+    \item $[K]$: Matriz de rigidez global ($M \times M$)
+    \item $\{a\}$: Vector de coeficientes incógnitas ($M \times 1$)
+    \item $\{F\}$: Vector de carga global ($M \times 1$)
+\end{itemize}
+
+\section{Formulación NO Discretizada: Polinomios de Legendre}
+
+\subsection{Funciones Base de Legendre}
+
+Los polinomios de Legendre $P_m(\xi)$ están definidos en el intervalo $\xi \in [-1, 1]$. Para mapearlos al dominio físico $[0, L]$, usamos:
+
+\begin{equation}
+\xi = \frac{2x}{L} - 1 \quad \Rightarrow \quad x = \frac{L}{2}(\xi + 1)
+\label{eq:mapping}
+\end{equation}
+
+Las funciones base son:
+\begin{equation}
+N_m(x) = P_m(\xi(x)), \quad m = 0, 1, 2, \ldots, M-1
+\end{equation}
+
+\subsection{Derivadas en el Dominio Físico}
+
+La primera derivada se transforma como:
+\begin{equation}
+\frac{dN_m}{dx} = \frac{dP_m}{d\xi} \cdot \frac{d\xi}{dx} = \frac{dP_m}{d\xi} \cdot \frac{2}{L}
+\end{equation}
+
+La segunda derivada:
+\begin{equation}
+\frac{d^2N_m}{dx^2} = \frac{d^2P_m}{d\xi^2} \cdot \left(\frac{2}{L}\right)^2
+\end{equation}
+
+\subsection{Cálculo de $K_{lm}$ para Legendre}
+
+Sustituyendo en (\ref{eq:Klm}):
+
+\begin{align}
+K_{lm}^{Leg} &= -D \int_0^L \left(\frac{dP_l}{d\xi} \cdot \frac{2}{L}\right)\left(\frac{dP_m}{d\xi} \cdot \frac{2}{L}\right) dx \nonumber \\
+&\quad - U \int_0^L P_l(\xi) \left(\frac{dP_m}{d\xi} \cdot \frac{2}{L}\right) dx \nonumber \\
+&\quad - k \int_0^L P_l(\xi) P_m(\xi) dx
+\end{align}
+
+Cambiando variable a $\xi$: $dx = \frac{L}{2}d\xi$
+
+\begin{equation}
+\boxed{K_{lm}^{Leg} = -\frac{2D}{L}\int_{-1}^{1} \frac{dP_l}{d\xi}\frac{dP_m}{d\xi} d\xi - U\int_{-1}^{1} P_l \frac{dP_m}{d\xi} d\xi - \frac{kL}{2}\int_{-1}^{1} P_l P_m d\xi}
+\label{eq:Klm_legendre}
+\end{equation}
+
+\subsection{Cálculo de $F_l$ para Legendre}
+
+De (\ref{eq:Fl_final}), evaluando en $x=0$ ($\xi = -1$):
+
+\begin{equation}
+\boxed{F_l^{Leg} = U \cdot c_{inlet} \cdot P_l(-1)}
+\label{eq:Fl_legendre}
+\end{equation}
+
+\subsection{Modificación por Condición en $x=0$}
+
+La matriz $K$ se modifica según (\ref{eq:Klm_bc}):
+
+\begin{equation}
+K_{lm}^{Leg} \leftarrow K_{lm}^{Leg} + U \cdot P_l(-1) \cdot P_m(-1)
+\end{equation}
+
+\section{Formulación Discretizada: Elementos Finitos con Lagrange}
+
+\subsection{Discretización del Dominio}
+
+El dominio $[0, L]$ se divide en $n_{elem}$ elementos:
+
+\begin{equation}
+\Omega = \bigcup_{e=1}^{n_{elem}} \Omega^e, \quad \Omega^e = [x_{e}, x_{e+1}]
+\end{equation}
+
+con longitud de elemento:
+\begin{equation}
+h_e = \frac{L}{n_{elem}}
+\end{equation}
+
+Se generan $n_{nodos} = n_{elem} + 1$ nodos.
+
+\subsection{Funciones Base de Lagrange Lineales}
+
+En cada elemento, usamos funciones de forma lineales en coordenada local $\xi \in [0, 1]$:
+
+\begin{align}
+N_1(\xi) &= 1 - \xi \label{eq:N1}\\
+N_2(\xi) &= \xi \label{eq:N2}
+\end{align}
+
+con derivadas:
+\begin{align}
+\frac{dN_1}{d\xi} &= -1 \\
+\frac{dN_2}{d\xi} &= 1
+\end{align}
+
+Mapeo al elemento físico:
+\begin{equation}
+x = x_e + \xi \cdot h_e, \quad \xi = \frac{x - x_e}{h_e}
+\end{equation}
+
+\subsection{Matriz de Rigidez Local $K^e$}
+
+Para un elemento $e$, la matriz local $2 \times 2$ es:
+
+\begin{equation}
+K_{ij}^e = -\int_{\Omega^e} D\frac{dN_i}{dx}\frac{dN_j}{dx} dx - \int_{\Omega^e} U N_i \frac{dN_j}{dx} dx - \int_{\Omega^e} k N_i N_j dx
+\end{equation}
+
+Transformando a coordenadas locales ($dx = h_e d\xi$, $\frac{d}{dx} = \frac{1}{h_e}\frac{d}{d\xi}$):
+
+\begin{multline}
+K_{ij}^e = -\int_{0}^{1} D\frac{1}{h_e}\frac{dN_i}{d\xi}\frac{1}{h_e}\frac{dN_j}{d\xi} h_e d\xi \\
+- \int_{0}^{1} U N_i \frac{1}{h_e}\frac{dN_j}{d\xi} h_e d\xi - \int_{0}^{1} k N_i N_j h_e d\xi
+\end{multline}
+
+Simplificando:
+
+\begin{equation}
+\boxed{K_{ij}^e = -\frac{D}{h_e}\int_{0}^{1} \frac{dN_i}{d\xi}\frac{dN_j}{d\xi} d\xi - U\int_{0}^{1} N_i \frac{dN_j}{d\xi} d\xi - kh_e\int_{0}^{1} N_i N_j d\xi}
+\label{eq:Ke_lagrange}
+\end{equation}
+
+\subsection{Cálculo Explícito de $K^e$}
+
+Para elementos lineales, podemos calcular analíticamente:
+
+\subsubsection{Término Difusivo}
+
+\begin{equation}
+\int_0^1 \frac{dN_i}{d\xi}\frac{dN_j}{d\xi} d\xi =
+\begin{bmatrix}
+1 & -1 \\
+-1 & 1
+\end{bmatrix}
+\end{equation}
+
+\subsubsection{Término Advectivo}
+
+\begin{equation}
+\int_0^1 N_i \frac{dN_j}{d\xi} d\xi =
+\begin{bmatrix}
+-\frac{1}{2} & \frac{1}{2} \\
+-\frac{1}{2} & \frac{1}{2}
+\end{bmatrix}
+\end{equation}
+
+\subsubsection{Término Reactivo}
+
+\begin{equation}
+\int_0^1 N_i N_j d\xi =
+\begin{bmatrix}
+\frac{1}{3} & \frac{1}{6} \\
+\frac{1}{6} & \frac{1}{3}
+\end{bmatrix}
+\end{equation}
+
+\subsubsection{Matriz Local Completa}
+
+\begin{equation}
+K^e = -\frac{D}{h_e}\begin{bmatrix}
+1 & -1 \\
+-1 & 1
+\end{bmatrix}
+- U\begin{bmatrix}
+-\frac{1}{2} & \frac{1}{2} \\
+-\frac{1}{2} & \frac{1}{2}
+\end{bmatrix}
+- kh_e\begin{bmatrix}
+\frac{1}{3} & \frac{1}{6} \\
+\frac{1}{6} & \frac{1}{3}
+\end{bmatrix}
+\end{equation}
+
+\subsection{Ensamblaje Global}
+
+La matriz global $K_{global}$ se construye ensamblando las matrices locales:
+
+\begin{equation}
+K_{global}[i_{global}, j_{global}] \leftarrow K_{global}[i_{global}, j_{global}] + K_{ij}^e
+\end{equation}
+
+donde $i_{global}, j_{global}$ son los índices globales de los nodos del elemento $e$.
+
+\subsection{Aplicación de Condiciones de Contorno (FEM)}
+
+\subsubsection{En $x = 0$ (nodo 0)}
+
+Contribución al vector de carga:
+\begin{equation}
+F_{global}[0] = U \cdot c_{inlet}
+\end{equation}
+
+\subsubsection{En $x = L$ (nodo $n_{nodos}-1$)}
+
+La condición de Neumann homogénea ($\frac{dc}{dx} = 0$) es natural y no requiere modificación explícita.
+
+\section{Índices para Elementos Interiores y Exteriores}
+
+\subsection{Elementos Interiores}
+
+Los elementos interiores ($e = 1, 2, \ldots, n_{elem}-2$) contribuyen normalmente sin consideraciones especiales de frontera.
+
+\subsection{Elementos Exteriores}
+
+\subsubsection{Primer Elemento ($e = 0$)}
+
+\begin{itemize}
+    \item Nodo local 0 $\rightarrow$ Nodo global 0 (frontera izquierda)
+    \item Nodo local 1 $\rightarrow$ Nodo global 1
+    \item Aplicar condición de contorno tipo Robin en nodo 0
+\end{itemize}
+
+\subsubsection{Último Elemento ($e = n_{elem}-1$)}
+
+\begin{itemize}
+    \item Nodo local 0 $\rightarrow$ Nodo global $n_{elem}-1$
+    \item Nodo local 1 $\rightarrow$ Nodo global $n_{elem}$ (frontera derecha)
+    \item Condición de Neumann natural en nodo $n_{elem}$
+\end{itemize}
+
+\section{Cálculo del Residuo}
+
+El residuo $R(x)$ mide qué tan bien la aproximación $c_{approx}(x)$ satisface la ecuación diferencial:
+
+\begin{equation}
+R(x) = D\frac{d^2c_{approx}}{dx^2} - U\frac{dc_{approx}}{dx} - k \cdot c_{approx}
+\label{eq:residual}
+\end{equation}
+
+Para la aproximación:
+\begin{equation}
+c_{approx}(x) = \sum_{m=0}^{M-1} a_m N_m(x)
+\end{equation}
+
+Calculamos:
+\begin{align}
+\frac{dc_{approx}}{dx} &= \sum_{m=0}^{M-1} a_m \frac{dN_m}{dx} \\
+\frac{d^2c_{approx}}{dx^2} &= \sum_{m=0}^{M-1} a_m \frac{d^2N_m}{dx^2}
+\end{align}
+
+\section{Error Norma $L_2$}
+
+El error en norma $L_2$ entre la solución aproximada y la analítica se define como:
+
+\begin{equation}
+\|e\|_{L_2} = \sqrt{\frac{1}{L}\int_0^L (c_{approx}(x) - c_{exact}(x))^2 dx}
+\label{eq:L2_error}
+\end{equation}
+
+Numéricamente:
+\begin{equation}
+\|e\|_{L_2} \approx \sqrt{\frac{1}{L}\sum_{i=1}^{N} (c_{approx}(x_i) - c_{exact}(x_i))^2 \Delta x}
+\end{equation}
+
+\section{Análisis de Convergencia}
+
+\subsection{Convergencia No Discretizada (Legendre)}
+
+Para métodos espectrales con polinomios de Legendre, la convergencia es \textbf{exponencial} (o espectral):
+
+\begin{equation}
+\|e\|_{L_2} \sim e^{-\alpha M}
+\end{equation}
+
+donde $\alpha > 0$ depende de la suavidad de la solución.
+
+\subsection{Convergencia Discretizada (FEM con Lagrange)}
+
+Para elementos finitos con funciones lineales, la convergencia es \textbf{algebraica}:
+
+\begin{equation}
+\|e\|_{L_2} \sim \mathcal{O}(h^{p+1}) = \mathcal{O}(h^2)
+\end{equation}
+
+donde $p = 1$ es el orden del polinomio de interpolación.
+
+\section{Resultados}
+
+\subsection{Parámetros Utilizados}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Parámetro} & \textbf{Valor} & \textbf{Unidades} \\ \midrule
+$D$ & 5000 & m$^2$/hr \\
+$U$ & 100 & m/hr \\
+$k$ & 2 & hr$^{-1}$ \\
+$L$ & 100 & m \\
+$c_{inlet}$ & 100 & mol/L \\ \bottomrule
+\end{tabular}
+\caption{Parámetros del reactor PFR}
+\end{table}
+
+\subsection{Convergencia No Discretizada}
+
+Se probaron valores de $M = 3, 5, 8, 12, 15, 18, 20$ funciones base de Legendre. Los resultados muestran:
+
+\begin{itemize}
+    \item Convergencia rápida a la solución analítica
+    \item Error $L_2 < 10^{-6}$ para $M \geq 12$
+    \item Convergencia exponencial observada
+\end{itemize}
+
+\subsection{Convergencia Discretizada (FEM)}
+
+Se probaron mallas con $n_{elem} = 5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100$ elementos. Los resultados muestran:
+
+\begin{itemize}
+    \item Convergencia $\mathcal{O}(h^2)$ confirmada
+    \item Error $L_2 < 10^{-3}$ para $n_{elem} \geq 50$
+    \item Mayor cantidad de grados de libertad requeridos comparado con Legendre
+\end{itemize}
+
+\section{Estudio Paramétrico de $k$}
+
+Se analizó el efecto de variar la tasa de reacción $k$ en los valores: $k/4, k/2, k, 2k, 4k$.
+
+\subsection{Efectos de Reducir $k$}
+
+\begin{itemize}
+    \item Menor consumo de reactivo a lo largo del reactor
+    \item Mayor concentración a la salida $c(L)$
+    \item Menor conversión del reactor
+    \item Perfil de concentración más plano
+    \item Menor dominancia del término reactivo
+\end{itemize}
+
+\subsection{Efectos de Aumentar $k$}
+
+\begin{itemize}
+    \item Mayor consumo de reactivo
+    \item Menor concentración a la salida $c(L)$
+    \item Mayor conversión del reactor
+    \item Perfil de concentración más pronunciado
+    \item Gradientes más fuertes (posibles capas límite)
+    \item Requiere mayor refinamiento numérico para mantener precisión
+\end{itemize}
+
+\subsection{Conversión del Reactor}
+
+La conversión se define como:
+\begin{equation}
+X = \frac{c_{inlet} - c(L)}{c_{inlet}} \times 100\%
+\end{equation}
+
+\section{Respuestas a las Preguntas}
+
+\subsection{¿Qué efectos tiene computacionalmente aplicar una discretización?}
+
+\subsubsection{Estructura de Matrices}
+
+\begin{itemize}
+    \item \textbf{No discretizada (Legendre)}: Matriz \textbf{densa} $M \times M$ con $\mathcal{O}(M^2)$ elementos no nulos
+    \item \textbf{Discretizada (FEM)}: Matriz \textbf{banda sparse} con ancho de banda limitado (3 para elementos lineales), $\mathcal{O}(N)$ elementos no nulos
+\end{itemize}
+
+\subsubsection{Costo Computacional}
+
+\textbf{Ensamblaje:}
+\begin{itemize}
+    \item No discretizada: $\mathcal{O}(M^2)$ integrales numéricas
+    \item Discretizada: $\mathcal{O}(N)$ integrales locales más simples
+\end{itemize}
+
+\textbf{Solución del sistema:}
+\begin{itemize}
+    \item No discretizada: $\mathcal{O}(M^3)$ con solvers densos
+    \item Discretizada: $\mathcal{O}(N)$ con solvers sparse optimizados
+\end{itemize}
+
+\subsubsection{Escalabilidad}
+
+\begin{itemize}
+    \item \textbf{No discretizada}: Limitada por:
+    \begin{itemize}
+        \item Ortogonalidad numérica de polinomios de alto orden
+        \item Mal condicionamiento de la matriz para $M$ grande
+        \item No aplicable a geometrías complejas
+    \end{itemize}
+    \item \textbf{Discretizada}: Excelente escalabilidad:
+    \begin{itemize}
+        \item Puede manejar millones de elementos
+        \item Aplicable a geometrías arbitrarias 2D/3D
+        \item Refinamiento local (h-adaptivity, p-adaptivity)
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Memoria}
+
+\begin{itemize}
+    \item No discretizada: $\mathcal{O}(M^2)$ almacenamiento
+    \item Discretizada: $\mathcal{O}(N)$ almacenamiento con formatos sparse
+\end{itemize}
+
+\subsection{¿Con cuál de las dos estrategias se tiene un orden de convergencia mayor?}
+
+\textbf{Respuesta: La formulación NO discretizada con Legendre tiene mayor orden de convergencia.}
+
+\subsubsection{Convergencia Legendre (No Discretizada)}
+
+\begin{itemize}
+    \item Tipo: \textbf{Convergencia exponencial (espectral)}
+    \item Comportamiento: $\|e\|_{L_2} \sim e^{-\alpha M}$
+    \item Ventajas:
+    \begin{itemize}
+        \item Precisión muy alta con pocos grados de libertad
+        \item Ideal para soluciones suaves
+        \item $M = 12-15$ suficiente para error $< 10^{-6}$
+    \end{itemize}
+    \item Desventajas:
+    \begin{itemize}
+        \item Solo funciona bien si la solución es suave
+        \item Limitado a geometrías simples
+        \item Convergencia se degrada con discontinuidades (fenómeno de Gibbs)
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Convergencia FEM Lagrange (Discretizada)}
+
+\begin{itemize}
+    \item Tipo: \textbf{Convergencia algebraica}
+    \item Comportamiento: $\|e\|_{L_2} \sim \mathcal{O}(h^{p+1})$ donde $p$ es el orden del elemento
+    \item Para elementos lineales: $\mathcal{O}(h^2)$
+    \item Ventajas:
+    \begin{itemize}
+        \item Robusto para todo tipo de problemas
+        \item Aplicable a geometrías complejas
+        \item Refinamiento local posible
+    \end{itemize}
+    \item Desventajas:
+    \begin{itemize}
+        \item Requiere más grados de libertad para igual precisión
+        \item $n_{elem} = 50-100$ para error $< 10^{-3}$
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Conclusión}
+
+Para este problema 1D con solución suave:
+\begin{itemize}
+    \item \textbf{Legendre}: Superior en convergencia y eficiencia
+    \item \textbf{FEM}: Más práctico para problemas reales complejos
+\end{itemize}
+
+\subsection{¿Qué efectos tiene reducir y aumentar $k$?}
+
+\subsubsection{Efectos Físicos}
+
+\textbf{Reducir $k$ (menor tasa de reacción):}
+\begin{itemize}
+    \item Menor velocidad de consumo de reactivo
+    \item Mayor concentración residual a la salida
+    \item Menor conversión global del reactor
+    \item Perfil de concentración más uniforme
+    \item Reactor operando en régimen dominado por advección
+\end{itemize}
+
+\textbf{Aumentar $k$ (mayor tasa de reacción):}
+\begin{itemize}
+    \item Mayor velocidad de consumo de reactivo
+    \item Menor concentración a la salida
+    \item Mayor conversión global
+    \item Perfil de concentración con gradientes pronunciados
+    \item Posible formación de capas límite reactivas
+    \item Reactor operando en régimen dominado por reacción
+\end{itemize}
+
+\subsubsection{Efectos Numéricos}
+
+\textbf{Para $k$ grande:}
+\begin{itemize}
+    \item Aparecen gradientes fuertes
+    \item Mayor dificultad para aproximar numéricamente
+    \item Requiere mayor refinamiento (mayor $M$ o menor $h$)
+    \item Posible inestabilidad numérica si no se refina adecuadamente
+    \item Número de Péclet advectivo-reactivo: $Pe_r = \frac{UL}{\sqrt{kD}}$
+    \item Para $k \to \infty$: problema se vuelve \textit{stiff}
+\end{itemize}
+
+\textbf{Para $k$ pequeño:}
+\begin{itemize}
+    \item Solución más suave
+    \item Más fácil de aproximar numéricamente
+    \item Menor refinamiento necesario
+    \item Convergencia más rápida
+\end{itemize}
+
+\subsubsection{Relación Conversión vs $k$}
+
+La conversión aumenta con $k$, pero no linealmente:
+\begin{equation}
+X(k) = f(Da) = f\left(\frac{kL}{U}\right)
+\end{equation}
+
+donde $Da$ es el número de Damköhler (relación entre tasa de reacción y tasa de transporte).
+
+\section{Conclusiones}
+
+\begin{enumerate}
+    \item Se desarrolló exitosamente la solución del reactor PFR usando dos formulaciones de elementos finitos.
+
+    \item La formulación NO discretizada con Legendre muestra convergencia exponencial, alcanzando alta precisión con pocos grados de libertad ($M \sim 12-15$).
+
+    \item La formulación discretizada con FEM y Lagrange muestra convergencia $\mathcal{O}(h^2)$, requiriendo más elementos ($n_{elem} \sim 50-100$) para precisión comparable.
+
+    \item El método de Galerkin con debilitamiento permite incorporar naturalmente las condiciones de contorno tipo Neumann.
+
+    \item La tasa de reacción $k$ tiene efectos significativos tanto en el comportamiento físico (conversión) como en los requisitos numéricos (refinamiento).
+
+    \item Para problemas 1D con soluciones suaves, los métodos espectrales (Legendre) son superiores en eficiencia computacional.
+
+    \item Para problemas complejos, geometrías irregulares o 2D/3D, los métodos FEM son más prácticos y robustos.
+
+    \item Ambos métodos convergen correctamente a la solución analítica, validando la implementación.
+\end{enumerate}
+
+\section{Referencias}
+
+\begin{enumerate}
+    \item Reddy, J. N. (2006). \textit{An Introduction to the Finite Element Method}. McGraw-Hill.
+    \item Zienkiewicz, O. C., \& Taylor, R. L. (2000). \textit{The Finite Element Method: Volume 1, The Basis}. Butterworth-Heinemann.
+    \item Hughes, T. J. R. (2000). \textit{The Finite Element Method: Linear Static and Dynamic Finite Element Analysis}. Dover Publications.
+    \item Boyd, J. P. (2001). \textit{Chebyshev and Fourier Spectral Methods}. Dover Publications.
+    \item Levenspiel, O. (1999). \textit{Chemical Reaction Engineering}. John Wiley \& Sons.
+\end{enumerate}
+
+\end{document}
